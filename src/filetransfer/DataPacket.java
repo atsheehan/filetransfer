@@ -110,7 +110,7 @@ public class DataPacket {
 	// and will not be the last packet.
 
 	this.isFirstPacket = true;
-	this.filename	   = file.getName();
+	this.filename	   = String.format("%s.recv", file.getName());
 	this.sequenceNumber = 0;
 
 	// The data section should consist of 4 bytes for the ACK port and

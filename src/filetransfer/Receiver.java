@@ -51,8 +51,7 @@ public class Receiver {
 		// The initialization packet should contain the name of the file that we are 
 		// going to write.
 		try {
-		    String filename = String.format("%s.recv", packet.getFilename());
-		    writer = new BufferedOutputStream(new FileOutputStream(filename));
+		    writer = new BufferedOutputStream(new FileOutputStream(packet.getFilename()));
 		} catch (FileNotFoundException e) {
 		    System.err.println("[error] could not create new file. message: " + e.getMessage());
 		    fileReceiver.close();
