@@ -1,0 +1,45 @@
+Before running sendfile and recvfile, ensure that sendfile.jar and recvfile.jar are 
+in the same directory. The source files are located in src/filetransfer.
+
+The syntax for running both programs are as follows:
+
+./sendfile -r <recv_host>:<recv_port> -f <filename>
+./recvfile -p <recv_port>
+
+
+PACKET STRUCTURE
+================
+
+All of the packets from the sender to the receiver use the following format:
+
+ 0                   1                   2                   3  
+ 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+|                        Sequence Number                        |
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+|            Checksum           |           Data Length         |        
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+|F|L|  Flags     |                                              |
++-+-+-+-+-+-+-+-++                                              |
+|                             Data                              |
+|                                                               |
+|                                                               |
+|                                                               |
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+
+* The sequence number identifies what section of the file is contained
+  in the packet.
+* The checksum is used to verify the integrity of the packet.
+* The data length is used to validate the length of the data section.
+* The flags are used to indicate the first and last packet of the transfer.
+* The rest is data.
+
+To initiate the transfer, a packet is sent from the sender with the
+name of the file and the listening port to return ACKs to.
+
+All packets after that contain chunks of the file, identified by the 
+sequence number.
+
+To signify the end of a transfer, an empty packet is set with the Last Packet
+flag set in the header.
+
