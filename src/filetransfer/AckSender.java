@@ -29,6 +29,7 @@ public class AckSender {
 	} catch (IOException e) {
 	    return false;
 	}
+	System.out.format("[send ack] %d\n", ackNumber);
 
 	return true;
     }
