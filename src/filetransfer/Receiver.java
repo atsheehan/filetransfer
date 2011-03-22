@@ -96,7 +96,7 @@ public class Receiver {
 		fileReceiver.close();
 	}
 
-	System.out.println("[completed]");
+	System.err.println("[completed]");
     }
 
     private boolean parseArgs(String[] args) {

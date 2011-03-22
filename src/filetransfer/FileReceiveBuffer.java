@@ -64,7 +64,7 @@ public class FileReceiveBuffer extends Thread implements Closeable {
 	    DataPacket packet = new DataPacket(udpPacket.getData());
 	    
 	    if (packet == null || packet.isCorrupt()) {
-		System.out.println("[recv data] corrupt packet]");
+		System.err.println("[recv data] corrupt packet]");
 		continue;
 	    }
 
@@ -130,9 +130,17 @@ public class FileReceiveBuffer extends Thread implements Closeable {
 
     private void updateBuffer(DataPacket packet) {
 
+	// A quick hack to figure out the starting position.
 	final int SEGMENT_SIZE = 1000;
 	int sequenceNumber = packet.getSequenceNumber();
-	int start = (sequenceNumber - 1) * SEGMENT_SIZE;
+	String start;
+	if (packet.isInitPacket()) {
+	    start = "start";
+	} else if (packet.isLastPacket()) {
+	    start = "end";
+	} else {
+	    start = Integer.toString((sequenceNumber - 1) * SEGMENT_SIZE);
+	}
 	int length = packet.getData().length;
 
 	lock.lock();
@@ -140,15 +148,15 @@ public class FileReceiveBuffer extends Thread implements Closeable {
 	    if (packetIsInBufferWindow(sequenceNumber)) {
 		save(packet);
 	    } else {
-		System.out.format("[recv data] %d (%d) IGNORED\n", start, length);
+		System.err.format("[recv data] %s (%d) IGNORED\n", start, length);
 		return;
 	    }
 
 	    if (sequenceNumber == nextPacketSeqNo) {
-		System.out.format("[recv data] %d (%d) ACCEPTED(in-order)\n", start, length);
+		System.err.format("[recv data] %s (%d) ACCEPTED(in-order)\n", start, length);
 		nextPacketAvailable.signal();
 	    } else {
-		System.out.format("[recv data] %d (%d) ACCEPTED(out-of-order)\n", start, length);
+		System.err.format("[recv data] %s (%d) ACCEPTED(out-of-order)\n", start, length);
 	    }
 
 	    if (sequenceNumber == lastConsecutiveSeqNo + 1) {

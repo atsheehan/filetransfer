@@ -220,7 +220,7 @@ public class DataPacket {
     // Computes the checksum of the given byte array.
     private static long calculateChecksum(byte[] buffer) {
 
-	// Note: code is influenced by lecture slides as well as the info at:
+	// Note: code taken from lecture slides as well as the info at:
 	// http://stackoverflow.com/questions/4113890/
 	// how-to-calculate-the-internet-checksum-from-a-byte-in-java
 

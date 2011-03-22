@@ -22,29 +22,32 @@ public class FileSendBuffer extends Thread implements Closeable {
     private ArrayList<SentPacket> buffer;
     private boolean doneTransfer;
     private ReentrantLock lock;
+    private AckReceiver ackReceiver;
 
     private int lastAckSeqNo;
     private int nextSeqNo;
 
     private long totalDataSent;
 
-    private static final int BUFFER_SIZE = 1000;
+    private static final long ACK_TIMEOUT = 100;
+    private static final int INITIAL_BUFFER_SIZE = 2;
+    private static final int BUFFER_STEP_SIZE = 2;
 
     // Initializes the buffer to send packets to the supplied destination.
-    public FileSendBuffer(InetAddress destination, int port) throws SocketException {
+    public FileSendBuffer(InetAddress destination, int port, AckReceiver ackReceiver) throws SocketException {
 
 	this.socket	  = new DatagramSocket();
 	this.destination  = destination;
 	this.port	  = port;
 	this.doneTransfer = false;
 	this.nextSeqNo	  = 0;
+	this.ackReceiver  = ackReceiver;
 
 	this.buffer	  = new ArrayList<SentPacket>();
-	this.bufferSlots  = new Semaphore(BUFFER_SIZE);
+	this.bufferSlots  = new Semaphore(INITIAL_BUFFER_SIZE);
 	this.lock	  = new ReentrantLock();
 
 	this.totalDataSent = 0;
-
     }
 
 
@@ -146,12 +149,13 @@ public class FileSendBuffer extends Thread implements Closeable {
 		startIndex = Integer.toString((nextPacket.sequenceNumber - 1) * Sender.SEGMENT_SIZE);
 	    }
 
-	    System.out.format("[send data] %s (%d)\n", 
+	    // Use the err output to display immediately.
+	    System.err.format("[send data] %s (%d)\n", 
 			      startIndex,
 			      nextPacket.data.length - DataPacket.HEADER_SIZE);
 
-	    // Keep track of the number of times we send don't keep sending the same packet.
-	    ++nextPacket.sendCount;
+	    // Flag that this packet was sent already.
+	    nextPacket.sendCount = 1;
 	}
 
     }
@@ -162,7 +166,8 @@ public class FileSendBuffer extends Thread implements Closeable {
     }
 
     // Gets the next packet in the buffer to send based on the sequence numbers and the
-    // number of times it has been transmitted in the past.
+    // number of times it has been transmitted in the past. Returns null when no packets
+    // should be transmitted.
     private SentPacket getNextPacketToSend() {
 	SentPacket packetToSend = null;
 	    
@@ -191,6 +196,20 @@ public class FileSendBuffer extends Thread implements Closeable {
 	    }
 	} finally {
 	    lock.unlock();
+	}
+
+	// If this packet has been sent before, that means that all of the packets
+	// in the buffer have already been sent. Try waiting for an ACK to come in
+	// for a short period. If an ACK is received, then we can assume that we can
+	// increase our buffer to fill in that empty space. If no ACK comes in, we
+	// assume that the packet was lost or corrupted and we can send it again.
+	if (packetToSend != null &&
+	    packetToSend.sendCount > 0 &&
+	    ackReceiver.waitForAck(packetToSend.sequenceNumber, ACK_TIMEOUT)) {
+
+	    // Expand the buffer a bit.
+	    bufferSlots.release(BUFFER_STEP_SIZE);
+	    return null;
 	}
 
 	return packetToSend;

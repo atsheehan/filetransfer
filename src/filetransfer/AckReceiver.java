@@ -27,7 +27,7 @@ public class AckReceiver extends Thread {
 
     // Creates a new receiver that will listen on a random, open port for
     // ACKs and will send updates to the given FileSendBuffer.
-    public AckReceiver(FileSendBuffer sender) throws SocketException {
+    public AckReceiver() throws SocketException {
 	this.socket = new DatagramSocket();
 	this.buffer = ByteBuffer.allocate(ACK_PACKET_SIZE);
 	this.packet = new DatagramPacket(buffer.array(), ACK_PACKET_SIZE);
@@ -35,10 +35,15 @@ public class AckReceiver extends Thread {
 	this.lastAckReceived  = -1;
 	this.doneListening    = false;
 
-	this.sender = sender;
+	this.sender = null;
 
 	this.lock = new ReentrantLock();
 	this.ackReceived = lock.newCondition();
+    }
+
+    // Assigns a send buffer to notify of incoming ACK packets.
+    public void setSendBuffer(FileSendBuffer sender) {
+	this.sender = sender;
     }
 
     // Gets the port that the receiver is listening on.
@@ -59,8 +64,12 @@ public class AckReceiver extends Thread {
 
 	    // When an ACK is received, notify the FileSendBuffer
 	    // so that it can stop transmitting that packet.
+	    System.err.format("[recv ack] %d\n", buffer.getLong(0));
 	    updateLastAckReceived(buffer.getLong(0));
-	    sender.setLastAck((int)lastAckReceived);
+
+	    if (sender != null) {
+		sender.setLastAck((int)lastAckReceived);
+	    }
 	}
 
 	socket.close();

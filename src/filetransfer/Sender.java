@@ -20,9 +20,10 @@ public class Sender {
     private AckReceiver ackReceiver;
     private FileSendBuffer sender;
 
-    static public final int	SEGMENT_SIZE = 1000;
-    static final int		EOF	     = -1;
-    static final long		ACK_TIMEOUT  = 120000; 
+    static public final int	SEGMENT_SIZE   = 1000;
+    static final int		EOF	       = -1;
+    static final long		ACK_TIMEOUT    = 120000; 
+    static final long		THREAD_TIMEOUT = 1000;
 	
     public Sender(String [] args) {
 
@@ -44,26 +45,10 @@ public class Sender {
 	    System.exit(1);
 	}
 
-	// Try opening a socket to send packets over in a new thread.
-	try {
-	    sender = new FileSendBuffer(destination, sendingPort);
-	} catch (SocketException e) {
-	    try{
-		System.err.println("[error] could not create a socket. message: " + e.getMessage());
-	    	reader.close();
-	    } catch(IOException r) {
-		System.err.println("[error] file reader failed to close. message: " + r.getMessage());
-	    } finally {
-		System.exit(1);  	
-	    }
-	}
-	sender.start();
-
 	// Create a new thread to listen for incoming ACK packets.
 	try {
-	    ackReceiver = new AckReceiver(sender);
-	} 
-	catch (SocketException e) {
+	    ackReceiver = new AckReceiver();
+	} catch (SocketException e) {
 	    try{
 		System.err.println("[error] could not create the ack receiver. message: " + e.getMessage());
 		reader.close();
@@ -74,7 +59,25 @@ public class Sender {
 		System.exit(1);  	
 	    }
 	}
+
+	// Try opening a socket to send packets over in a new thread.
+	try {
+	    sender = new FileSendBuffer(destination, sendingPort, ackReceiver);
+	} catch (SocketException e) {
+	    try{
+		System.err.println("[error] could not create a socket. message: " + e.getMessage());
+	    	reader.close();
+	    } catch(IOException r) {
+		System.err.println("[error] file reader failed to close. message: " + r.getMessage());
+	    } finally {
+		System.exit(1);  	
+	    }
+	}
+
+	ackReceiver.setSendBuffer(sender);
 	ackReceiver.start();
+
+	sender.start();
 
 	// Create the initial packet to setup the transfer with
 	// the receiver.
@@ -93,7 +96,6 @@ public class Sender {
 	    bytesRead = reader.read(buffer);
 	} catch (IOException e) {
 	    System.err.println("[error] file read error. message: " + e.getMessage());
-	    // TODO: send term packet here.
 	    System.exit(1);
 	}
 
@@ -104,7 +106,6 @@ public class Sender {
 		bytesRead = reader.read(buffer);
 	    } catch(IOException x) {
 		System.err.println("[error] file read error. message: " + x.getMessage());
-		// TODO: close readers and send term packet here.
 		System.exit(1);
 	    }
 	}
@@ -120,7 +121,13 @@ public class Sender {
 	ackReceiver.stopListening();
 	sender.stopSending();
 
-	// TODO: join both threads
+	try {
+	    ackReceiver.join(THREAD_TIMEOUT);
+	    sender.join(THREAD_TIMEOUT);
+	} catch (InterruptedException e) {
+	    System.err.println("[error] interrupted while closing threads. " + 
+			       "transfer may not have finished normally.");
+	}
 
 	try {
 	    sender.close();
@@ -129,20 +136,20 @@ public class Sender {
 	    System.err.println("[error] file reader failed to close: " + x.getMessage());
 	}
 
-	System.out.println("[completed]");
+	System.err.println("[completed]");
 
 	long runningTime = new Date().getTime() - startTime;
 	long totalDataSent = sender.getTotalDataSent();
 	long fileSize = file.length();
 
-	System.out.format("[stats] running time: %d ms\n", runningTime);
-	System.out.format("[stats] file size: %d bytes\n", fileSize);
-	System.out.format("[stats] total data sent: %d bytes\n", totalDataSent);
+	System.err.format("[stats] running time: %d ms\n", runningTime);
+	System.err.format("[stats] file size: %d bytes\n", fileSize);
+	System.err.format("[stats] total data sent: %d bytes\n", totalDataSent);
 	double efficiency = 0.0;
 	if (totalDataSent > 0) {
 	    efficiency = (double)fileSize / (double)totalDataSent;
 	}
-	System.out.format("[stats] efficiency: %04.2f percent\n", efficiency * 100);
+	System.err.format("[stats] efficiency: %04.2f percent\n", efficiency * 100);
     }
 
 
