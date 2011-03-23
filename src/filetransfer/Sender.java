@@ -136,20 +136,20 @@ public class Sender {
 	    System.err.println("[error] file reader failed to close: " + x.getMessage());
 	}
 
-	System.err.println("[completed]");
+	System.out.println("[completed]");
 
 	long runningTime = new Date().getTime() - startTime;
 	long totalDataSent = sender.getTotalDataSent();
 	long fileSize = file.length();
 
-	System.err.format("[stats] running time: %d ms\n", runningTime);
-	System.err.format("[stats] file size: %d bytes\n", fileSize);
-	System.err.format("[stats] total data sent: %d bytes\n", totalDataSent);
+	System.out.format("[stats] running time: %d ms\n", runningTime);
+	System.out.format("[stats] file size: %d bytes\n", fileSize);
+	System.out.format("[stats] total data sent: %d bytes\n", totalDataSent);
 	double efficiency = 0.0;
 	if (totalDataSent > 0) {
 	    efficiency = (double)fileSize / (double)totalDataSent;
 	}
-	System.err.format("[stats] efficiency: %04.2f percent\n", efficiency * 100);
+	System.out.format("[stats] efficiency: %04.2f percent\n", efficiency * 100);
     }
 
 

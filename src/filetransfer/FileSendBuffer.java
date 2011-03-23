@@ -32,7 +32,7 @@ public class FileSendBuffer extends Thread implements Closeable {
 
     private static final long ACK_TIMEOUT = 100;
     private static final int MIN_BUFFER_SIZE = 2;
-    private static final int MAX_BUFFER_SIZE = 100;
+    private static final int MAX_BUFFER_SIZE = 50;
     private static final int BUFFER_STEP_SIZE = 2;
 
     // Initializes the buffer to send packets to the supplied destination.
@@ -152,11 +152,11 @@ public class FileSendBuffer extends Thread implements Closeable {
 	    }
 
 	    // Use the err output to display immediately.
-	    System.err.format("[send data] %s (%d)\n", 
+	    System.out.format("[send data] %s (%d)\n", 
 			      startIndex,
 			      nextPacket.data.length - DataPacket.HEADER_SIZE);
 
-	    nextPacket.sendCount = 1;
+	    ++nextPacket.sendCount;
 	}
 
     }
@@ -209,12 +209,12 @@ public class FileSendBuffer extends Thread implements Closeable {
 
 	    if (ackReceiver.waitForAck(packetToSend.sequenceNumber, ACK_TIMEOUT)) {
 
-		// Expand the buffer a bit.
+		// Ack received, so we can expand the buffer a bit and we don't have
+		// to resend this packet.
 		expandBuffer();
 		return null;
 
 	    } else {
-		//resetSendCounts();
 		return packetToSend;
 	    }
 	}
@@ -234,12 +234,13 @@ public class FileSendBuffer extends Thread implements Closeable {
 	socket.close();
     }
 
+    // Increases the amount of packets that can sit in the queue at one time.
     private void expandBuffer() {
 	lock.lock();
 
 	try {
 	    if (buffer.size() + bufferSlots.availablePermits() <= MAX_BUFFER_SIZE) {
-		System.err.println("[debug] expanding buffer");
+		System.out.println("[debug] expanding buffer");
 		bufferSlots.release(BUFFER_STEP_SIZE);
 	    }
 	} finally {
@@ -250,6 +251,13 @@ public class FileSendBuffer extends Thread implements Closeable {
     // Marks a packet's send count to 0 so that it will be prioritized
     // in the send buffer.
     public void resendPacket(int sequenceNumber) {
+
+	// Here we assume that if one packet was lost, maybe the next
+	// packet was lost too. So we mark the sequence number given
+	// and the next packet as never sent so that they'll both
+	// be sent again. In general, it reduced the likelihood of
+	// getting snagged by timeouts when a chunk of packets went missing
+	// but reduced the total efficiency as well.
 	int start = sequenceNumber;
 	int end = sequenceNumber + 1;
 
@@ -262,20 +270,6 @@ public class FileSendBuffer extends Thread implements Closeable {
 		    packet.sequenceNumber <= end) {
 		    packet.sendCount = 0;
 		}
-	    }
-	} finally {
-	    lock.unlock();
-	}
-    }
-
-   private void resetSendCounts() {
-	System.err.println("[debug] timed out. resetting send counts");
-	lock.lock();
-	try {
-	    Iterator<SentPacket> iter = buffer.iterator();
-	    while (iter.hasNext()) {
-		SentPacket packet = iter.next();
-		packet.sendCount = 0;
 	    }
 	} finally {
 	    lock.unlock();

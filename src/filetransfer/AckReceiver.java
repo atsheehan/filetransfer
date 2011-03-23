@@ -67,20 +67,20 @@ public class AckReceiver extends Thread {
 	    // Verify that the ACK contains three identical integer
 	    // values.
 	    if (buffer.capacity() < ACK_PACKET_SIZE) {
-		System.err.format("[recv corrupt ack]");
+		System.out.println("[recv corrupt ack]");
 		continue;
 	    }
 
 	    int ackValue = buffer.getInt(0);
 	    if (ackValue != buffer.getInt(4) ||
 		ackValue != buffer.getInt(8)) {
-		System.err.println("[recv corrupt ack]");
+		System.out.println("[recv corrupt ack]");
 		continue;
 	    }
 
 	    // When an ACK is received, notify the FileSendBuffer
 	    // so that it can stop transmitting that packet.
-	    System.err.format("[recv ack] %d\n", ackValue);
+	    System.out.format("[recv ack] %d\n", ackValue);
 	    updateLastAckReceived(ackValue);
 
 	    if (sender != null) {

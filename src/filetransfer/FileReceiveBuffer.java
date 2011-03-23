@@ -13,6 +13,8 @@ import java.util.concurrent.locks.Condition;
 import java.util.Arrays;
 import java.util.Iterator;
 
+// The FileReceiveBuffer accepts incoming packets from the sender
+// and arranges them in the correct order.
 public class FileReceiveBuffer extends Thread implements Closeable {
 
     private static final int MAX_PACKET_SIZE = 2000;
@@ -47,6 +49,7 @@ public class FileReceiveBuffer extends Thread implements Closeable {
 	socket.close();
     }
 
+    // Start a new thread running that will continuously listen for incoming data packets.
     public void run() {
 
 	while (!finishedReceiving) {
@@ -57,16 +60,21 @@ public class FileReceiveBuffer extends Thread implements Closeable {
 	    try {
 		socket.receive(udpPacket);
 	    } catch (IOException e) {
-		System.exit(1);
-	    }
-
-	    DataPacket packet = new DataPacket(udpPacket.getData());
-	    
-	    if (packet == null || packet.isCorrupt()) {
-		System.err.println("[recv corrupt packet]");
 		continue;
 	    }
 
+	    // Take the data from the UDP packet and create our own filetransfer
+	    // data packet from it.
+	    DataPacket packet = new DataPacket(udpPacket.getData());
+	    
+	    if (packet == null || packet.isCorrupt()) {
+		System.out.println("[recv corrupt packet]");
+		continue;
+	    }
+
+	    // In the beginning we don't know where to send the ACK value to, so
+	    // if this is the first packet then it should contain the port that the
+	    // sender is listening for ACK values on.
 	    if (ackSender == null) {
 		if (packet.isInitPacket()) {
 		    int ackPort = packet.getAckPort();
@@ -75,13 +83,15 @@ public class FileReceiveBuffer extends Thread implements Closeable {
 		    try {
 			ackSender = new AckSender(dest, ackPort);
 		    } catch (SocketException e) {
-			System.exit(1); // TODO
+			continue;
 		    }
 		}
 	    }
 
+	    // Store the packet in the buffer, even if it is out of order.
 	    updateBuffer(packet);
 
+	    // Only return an ACK value if we know where to send it.
 	    if (ackSender != null) {
 		ackSender.sendAck(lastConsecutiveSeqNo);
 	    }
@@ -90,6 +100,9 @@ public class FileReceiveBuffer extends Thread implements Closeable {
 
     }
 
+
+    // Gets the next consecutive packet from the sender. If the packet has not
+    // yet arrived, this method will block until the packet becomes available.
     public DataPacket getNextPacket() {
 
 	boolean packetFound = false;
@@ -110,6 +123,7 @@ public class FileReceiveBuffer extends Thread implements Closeable {
 		    }
 		}
 
+		// Use a condition variable to block while we are waiting.
 		if (!packetFound) {
 		    try {
 			nextPacketAvailable.await();
@@ -127,6 +141,7 @@ public class FileReceiveBuffer extends Thread implements Closeable {
 	return packet;
     }
 
+    // Saves a packet to the buffer if it is within the range of acceptable packets.
     private void updateBuffer(DataPacket packet) {
 
 	// A quick hack to figure out the starting position.
@@ -144,18 +159,21 @@ public class FileReceiveBuffer extends Thread implements Closeable {
 
 	lock.lock();
 	try {
+
+	    // Only add the packet if we haven't received it before or if it's
+	    // not too far ahead.
 	    if (packetIsInBufferWindow(sequenceNumber)) {
 		save(packet);
 	    } else {
-		System.err.format("[recv data] %s (%d) IGNORED\n", start, length);
+		System.out.format("[recv data] %s (%d) IGNORED\n", start, length);
 		return;
 	    }
 
 	    if (sequenceNumber == nextPacketSeqNo) {
-		System.err.format("[recv data] %s (%d) ACCEPTED(in-order)\n", start, length);
+		System.out.format("[recv data] %s (%d) ACCEPTED(in-order)\n", start, length);
 		nextPacketAvailable.signal();
 	    } else {
-		System.err.format("[recv data] %s (%d) ACCEPTED(out-of-order)\n", start, length);
+		System.out.format("[recv data] %s (%d) ACCEPTED(out-of-order)\n", start, length);
 	    }
 
 	    if (sequenceNumber == lastConsecutiveSeqNo + 1) {
@@ -166,8 +184,10 @@ public class FileReceiveBuffer extends Thread implements Closeable {
 	}
     }
 
+
     private boolean packetIsInBufferWindow(int sequenceNumber) {
-	// Check if the sequence number is within the buffer window
+
+	// Check if the sequence number is within the buffer window.
 	if (sequenceNumber < nextPacketSeqNo ||
 	    sequenceNumber >= nextPacketSeqNo + BUFFER_SIZE) {
 	    return false;
@@ -190,6 +210,8 @@ public class FileReceiveBuffer extends Thread implements Closeable {
 	buffer.add(packet);
     }
 
+    // Goes through the buffer and determines where the last consecutive
+    // sequence number received was.
     private void updateLatestSequenceNumber() {
 	while (true) {
 	    int i;
@@ -208,6 +230,7 @@ public class FileReceiveBuffer extends Thread implements Closeable {
 	}
     }
 
+    // Sends an acknowledgement of the last consecutive sequence number received.
     public void sendLastAck(int count) {
 	for (int i = 0; i < count; ++i) {
 	    ackSender.sendAck(lastConsecutiveSeqNo);

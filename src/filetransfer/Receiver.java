@@ -106,7 +106,7 @@ public class Receiver {
 			       "transfer may not have finished normally.");
 	}
 
-	System.err.println("[completed]");
+	System.out.println("[completed]");
     }
 
     private boolean parseArgs(String[] args) {
