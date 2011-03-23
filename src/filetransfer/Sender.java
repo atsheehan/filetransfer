@@ -22,7 +22,7 @@ public class Sender {
 
     static public final int	SEGMENT_SIZE   = 1000;
     static final int		EOF	       = -1;
-    static final long		ACK_TIMEOUT    = 120000; 
+    static final long		ACK_TIMEOUT    = 30000; 
     static final long		THREAD_TIMEOUT = 1000;
 	
     public Sender(String [] args) {

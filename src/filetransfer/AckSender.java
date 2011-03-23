@@ -14,18 +14,30 @@ public class AckSender {
     private DatagramPacket packet;
     private ByteBuffer buffer;
 
-    private final static int ACK_SIZE = 8;
+    private int latestAck;
+
+    private final static int ACK_SIZE = 12;
 
     // Creates the sender and opens a new socket.
     public AckSender(InetAddress destination, int ackPort)  throws SocketException {
 	this.socket	 = new DatagramSocket();
 	this.buffer	 = ByteBuffer.allocate(ACK_SIZE);
 	this.packet	 = new DatagramPacket(buffer.array(), ACK_SIZE, destination, ackPort);
+	this.latestAck   = 0;
     }
 
-    // Sends an ACK message to the sender.
-    public boolean sendAck(long ackNumber) {
-	buffer.putLong(0, ackNumber);
+    // Sends the latest ACK message received back to the sender.
+    public boolean sendAck(int ackNumber) {
+
+	if (ackNumber > latestAck) {
+	    latestAck = ackNumber;
+	}
+
+	// Put three copies of the same value in so the receiver
+	// can verify that they are the same (easier than a checksum).
+	buffer.putInt(0, latestAck);
+	buffer.putInt(4, latestAck);
+	buffer.putInt(8, latestAck);
 
 	try {
 	    socket.send(packet);

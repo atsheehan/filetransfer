@@ -17,13 +17,14 @@ public class AckReceiver extends Thread {
     private DatagramSocket socket;
     private DatagramPacket packet;
     private ByteBuffer buffer;
-    private long lastAckReceived;
+    private int previousAckReceived;
+    private int lastAckReceived;
     private boolean doneListening;
     private Lock lock;
     private Condition ackReceived;
     private FileSendBuffer sender;
 
-    private static final int ACK_PACKET_SIZE = 8;
+    private static final int ACK_PACKET_SIZE = 12;
 
     // Creates a new receiver that will listen on a random, open port for
     // ACKs and will send updates to the given FileSendBuffer.
@@ -32,6 +33,7 @@ public class AckReceiver extends Thread {
 	this.buffer = ByteBuffer.allocate(ACK_PACKET_SIZE);
 	this.packet = new DatagramPacket(buffer.array(), ACK_PACKET_SIZE);
 
+	this.previousAckReceived = -1;
 	this.lastAckReceived  = -1;
 	this.doneListening    = false;
 
@@ -62,14 +64,37 @@ public class AckReceiver extends Thread {
 		continue;
 	    }
 
+	    // Verify that the ACK contains three identical integer
+	    // values.
+	    if (buffer.capacity() < ACK_PACKET_SIZE) {
+		System.err.format("[recv corrupt ack]");
+		continue;
+	    }
+
+	    int ackValue = buffer.getInt(0);
+	    if (ackValue != buffer.getInt(4) ||
+		ackValue != buffer.getInt(8)) {
+		System.err.println("[recv corrupt ack]");
+		continue;
+	    }
+
 	    // When an ACK is received, notify the FileSendBuffer
 	    // so that it can stop transmitting that packet.
-	    System.err.format("[recv ack] %d\n", buffer.getLong(0));
-	    updateLastAckReceived(buffer.getLong(0));
+	    System.err.format("[recv ack] %d\n", ackValue);
+	    updateLastAckReceived(ackValue);
 
 	    if (sender != null) {
 		sender.setLastAck((int)lastAckReceived);
+
+		// If two of the same ACK value were received in a row,
+		// notify the sender to re-send the packet after that
+		// since it probably went missing.
+		if (previousAckReceived == ackValue) {
+		    sender.resendPacket(ackValue + 1);
+		}
 	    }
+
+	    previousAckReceived = ackValue;
 	}
 
 	socket.close();
@@ -77,11 +102,11 @@ public class AckReceiver extends Thread {
 
     // Blocks until we receive the expected ACK. Returns true if the ACK
     // was received, returns false if interrupted or times-out.
-    public boolean waitForAck(long expectedAck, long timeoutInMS) {
+    public boolean waitForAck(int expectedAck, long timeoutInMS) {
 	lock.lock();
 
 	try {
-	    while (expectedAck > lastAckReceived) {
+	    while (lastAckReceived < expectedAck ) {
 		try {
 		    if (!ackReceived.await(timeoutInMS, TimeUnit.MILLISECONDS)) {
 			return false;
@@ -110,10 +135,10 @@ public class AckReceiver extends Thread {
     // Determines if the latest ACK is greater than the previous
     // one, and if so, updates the value and alerts any threads
     // waiting on a new ACK value.
-    private void updateLastAckReceived(long newAck) {
+    private void updateLastAckReceived(int newAck) {
 	lock.lock();
 	try {
-	    if (newAck > lastAckReceived) {
+	    if (newAck >= lastAckReceived) {
 		lastAckReceived = newAck;
 		ackReceived.signal();
 	    }

@@ -26,11 +26,13 @@ public class FileSendBuffer extends Thread implements Closeable {
 
     private int lastAckSeqNo;
     private int nextSeqNo;
+    private int bufferSize;
 
     private long totalDataSent;
 
     private static final long ACK_TIMEOUT = 100;
-    private static final int INITIAL_BUFFER_SIZE = 2;
+    private static final int MIN_BUFFER_SIZE = 2;
+    private static final int MAX_BUFFER_SIZE = 100;
     private static final int BUFFER_STEP_SIZE = 2;
 
     // Initializes the buffer to send packets to the supplied destination.
@@ -44,7 +46,7 @@ public class FileSendBuffer extends Thread implements Closeable {
 	this.ackReceiver  = ackReceiver;
 
 	this.buffer	  = new ArrayList<SentPacket>();
-	this.bufferSlots  = new Semaphore(INITIAL_BUFFER_SIZE);
+	this.bufferSlots  = new Semaphore(MIN_BUFFER_SIZE);
 	this.lock	  = new ReentrantLock();
 
 	this.totalDataSent = 0;
@@ -154,7 +156,6 @@ public class FileSendBuffer extends Thread implements Closeable {
 			      startIndex,
 			      nextPacket.data.length - DataPacket.HEADER_SIZE);
 
-	    // Flag that this packet was sent already.
 	    nextPacket.sendCount = 1;
 	}
 
@@ -204,12 +205,18 @@ public class FileSendBuffer extends Thread implements Closeable {
 	// increase our buffer to fill in that empty space. If no ACK comes in, we
 	// assume that the packet was lost or corrupted and we can send it again.
 	if (packetToSend != null &&
-	    packetToSend.sendCount > 0 &&
-	    ackReceiver.waitForAck(packetToSend.sequenceNumber, ACK_TIMEOUT)) {
+	    packetToSend.sendCount > 0) {
 
-	    // Expand the buffer a bit.
-	    bufferSlots.release(BUFFER_STEP_SIZE);
-	    return null;
+	    if (ackReceiver.waitForAck(packetToSend.sequenceNumber, ACK_TIMEOUT)) {
+
+		// Expand the buffer a bit.
+		expandBuffer();
+		return null;
+
+	    } else {
+		//resetSendCounts();
+		return packetToSend;
+	    }
 	}
 
 	return packetToSend;
@@ -225,5 +232,53 @@ public class FileSendBuffer extends Thread implements Closeable {
     // Closes the underlying socket.
     public void close() {
 	socket.close();
+    }
+
+    private void expandBuffer() {
+	lock.lock();
+
+	try {
+	    if (buffer.size() + bufferSlots.availablePermits() <= MAX_BUFFER_SIZE) {
+		System.err.println("[debug] expanding buffer");
+		bufferSlots.release(BUFFER_STEP_SIZE);
+	    }
+	} finally {
+	    lock.unlock();
+	}
+    }
+
+    // Marks a packet's send count to 0 so that it will be prioritized
+    // in the send buffer.
+    public void resendPacket(int sequenceNumber) {
+	int start = sequenceNumber;
+	int end = sequenceNumber + 1;
+
+	lock.lock();
+	try {
+	    Iterator<SentPacket> iter = buffer.iterator();
+	    while (iter.hasNext()) {
+		SentPacket packet = iter.next();
+		if (packet.sequenceNumber >= start &&
+		    packet.sequenceNumber <= end) {
+		    packet.sendCount = 0;
+		}
+	    }
+	} finally {
+	    lock.unlock();
+	}
+    }
+
+   private void resetSendCounts() {
+	System.err.println("[debug] timed out. resetting send counts");
+	lock.lock();
+	try {
+	    Iterator<SentPacket> iter = buffer.iterator();
+	    while (iter.hasNext()) {
+		SentPacket packet = iter.next();
+		packet.sendCount = 0;
+	    }
+	} finally {
+	    lock.unlock();
+	}
     }
 }

@@ -13,6 +13,8 @@ public class Receiver {
     private int listeningPort;
     private String lastError;
 
+    private final int THREAD_TIMEOUT = 10000;
+
     public Receiver(String [] args) {
 
 	// Validate the user input before continuing.
@@ -94,6 +96,14 @@ public class Receiver {
 		System.err.println("[error] file writer failed to close: " + e.getMessage());
 	} finally {
 		fileReceiver.close();
+	}
+
+	// Wait for the thread to complete before exiting.
+	try {
+	    fileReceiver.join(THREAD_TIMEOUT);
+	} catch (InterruptedException e) {
+	    System.err.println("[error] interrupted while closing threads. " + 
+			       "transfer may not have finished normally.");
 	}
 
 	System.err.println("[completed]");

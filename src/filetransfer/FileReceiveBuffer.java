@@ -25,8 +25,8 @@ public class FileReceiveBuffer extends Thread implements Closeable {
     private Lock lock;
     private Condition nextPacketAvailable;
 
-    private long lastConsecutiveSeqNo;
-    private long nextPacketSeqNo;
+    private int lastConsecutiveSeqNo;
+    private int nextPacketSeqNo;
 
     private static final int BUFFER_SIZE = 1000;
 
@@ -57,14 +57,13 @@ public class FileReceiveBuffer extends Thread implements Closeable {
 	    try {
 		socket.receive(udpPacket);
 	    } catch (IOException e) {
-		// TODO do something else here.
 		System.exit(1);
 	    }
 
 	    DataPacket packet = new DataPacket(udpPacket.getData());
 	    
 	    if (packet == null || packet.isCorrupt()) {
-		System.err.println("[recv data] corrupt packet]");
+		System.err.println("[recv corrupt packet]");
 		continue;
 	    }
 
